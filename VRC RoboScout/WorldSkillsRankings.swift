@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct WorldSkillsTeam: Identifiable {
+struct WorldSkillsTeam: Identifiable, Hashable {
     let id = UUID()
     let number: String
     let ranking: Int
@@ -17,6 +17,17 @@ struct WorldSkillsTeam: Identifiable {
     let highest_driver: Int
     let highest_programming: Int
     let combined: Int
+    
+    init(world_skills: WorldSkills, ranking: Int, additional_ranking: Int? = nil) {
+        self.number = world_skills.team.number
+        self.ranking = ranking
+        self.additional_ranking = additional_ranking ?? 0
+        self.driver = world_skills.driver
+        self.programming = world_skills.programming
+        self.highest_driver = world_skills.highest_driver
+        self.highest_programming = world_skills.highest_programming
+        self.combined = world_skills.combined
+    }
 }
 
 struct WorldSkillsRow: View {
@@ -25,11 +36,11 @@ struct WorldSkillsRow: View {
     var body: some View {
         HStack {
             HStack {
-                Text(team_world_skills.additional_ranking == 0 ? "#\(team_world_skills.ranking)" : "#\(team_world_skills.ranking) (#\(team_world_skills.additional_ranking))")
+                Text(team_world_skills.additional_ranking == 0 ? "#\(team_world_skills.ranking)" : "#\(team_world_skills.ranking) (#\(team_world_skills.additional_ranking))").font(.system(size: 18))
                 Spacer()
             }.frame(width: 80)
             Spacer()
-            Text("\(team_world_skills.number)")
+            Text("\(team_world_skills.number)").font(.system(size: 18))
             Spacer()
             HStack {
                 Menu("\(team_world_skills.combined)") {
@@ -38,7 +49,7 @@ struct WorldSkillsRow: View {
                     Text("\(team_world_skills.driver) Driver")
                     Text("\(team_world_skills.highest_programming) Highest Programming")
                     Text("\(team_world_skills.highest_driver) Highest Driver")
-                }
+                }.font(.system(size: 18))
                 HStack {
                     Spacer()
                     VStack {
@@ -55,109 +66,56 @@ class WorldSkillsTeams: ObservableObject {
     
     var world_skills_teams: [WorldSkillsTeam]
     
-    init(begin: Int, end: Int, region: Int = 0, letter: Character = "0", filter_array: [String] = [], fetch: Bool = false) {
-        if fetch && API.world_skills_cache.count == 0 {
+    init(region: Int = 0, letter: Character = "0", filter_array: [String] = [], fetch: Bool = false) {
+        if fetch && API.world_skills_cache.teams.count == 0 {
             API.update_world_skills_cache()
         }
-        var end = end
         self.world_skills_teams = [WorldSkillsTeam]()
-        if end == 0 {
-            end = API.world_skills_cache.count
-        }
         // Favorites
         if filter_array.count != 0 {
             var rank = 1
-            for team in API.world_skills_cache {
-                if !filter_array.contains((team["team"] as! [String: Any])["team"] as! String) {
+            for team in API.world_skills_cache.teams {
+                if !filter_array.contains(team.team.number) {
                     continue
                 }
-                self.world_skills_teams.append(WorldSkillsTeam(number: (team["team"] as! [String: Any])["team"] as! String, ranking: rank, additional_ranking: team["rank"] as! Int, driver: (team["scores"] as! [String: Any])["driver"] as! Int, programming: (team["scores"] as! [String: Any])["programming"] as! Int, highest_driver: (team["scores"] as! [String: Any])["maxDriver"] as! Int, highest_programming: (team["scores"] as! [String: Any])["maxProgramming"] as! Int, combined: (team["scores"] as! [String: Any])["score"] as! Int))
+                self.world_skills_teams.append(WorldSkillsTeam(world_skills: team, ranking: rank, additional_ranking: team.ranking))
                 rank += 1
             }
         }
         // Region
         else if region != 0 {
             var rank = 1
-            for team in API.world_skills_cache {
-                if region != (team["team"] as! [String: Any])["eventRegionId"] as! Int {
+            for team in API.world_skills_cache.teams {
+                if region != team.event_region_id {
                     continue
                 }
-                self.world_skills_teams.append(WorldSkillsTeam(number: (team["team"] as! [String: Any])["team"] as! String, ranking: rank, additional_ranking: team["rank"] as! Int, driver: (team["scores"] as! [String: Any])["driver"] as! Int, programming: (team["scores"] as! [String: Any])["programming"] as! Int, highest_driver: (team["scores"] as! [String: Any])["maxDriver"] as! Int, highest_programming: (team["scores"] as! [String: Any])["maxProgramming"] as! Int, combined: (team["scores"] as! [String: Any])["score"] as! Int))
+                self.world_skills_teams.append(WorldSkillsTeam(world_skills: team, ranking: rank, additional_ranking: team.ranking))
                 rank += 1
             }
         }
         // Letter
         else if letter != "0" {
             var rank = 1
-            for team in API.world_skills_cache {
-                if letter != ((team["team"] as! [String: Any])["team"] as! String).last {
+            for team in API.world_skills_cache.teams {
+                if letter != team.team.number.last {
                     continue
                 }
-                self.world_skills_teams.append(WorldSkillsTeam(number: (team["team"] as! [String: Any])["team"] as! String, ranking: rank, additional_ranking: team["rank"] as! Int, driver: (team["scores"] as! [String: Any])["driver"] as! Int, programming: (team["scores"] as! [String: Any])["programming"] as! Int, highest_driver: (team["scores"] as! [String: Any])["maxDriver"] as! Int, highest_programming: (team["scores"] as! [String: Any])["maxProgramming"] as! Int, combined: (team["scores"] as! [String: Any])["score"] as! Int))
+                self.world_skills_teams.append(WorldSkillsTeam(world_skills: team, ranking: rank, additional_ranking: team.ranking))
                 rank += 1
             }
         }
         // World
         else {
-            if API.world_skills_cache.count == 0 {
+            if API.world_skills_cache.teams.count == 0 {
                 return
             }
-            for i in begin - 1...(end - 1 < API.world_skills_cache.count ? end - 1 : API.world_skills_cache.count - 1) {
-                let team = API.world_skills_cache[i]
-                self.world_skills_teams.append(WorldSkillsTeam(number: (team["team"] as! [String: Any])["team"] as! String, ranking: team["rank"] as! Int, additional_ranking: 0, driver: (team["scores"] as! [String: Any])["driver"] as! Int, programming: (team["scores"] as! [String: Any])["programming"] as! Int, highest_driver: (team["scores"] as! [String: Any])["maxDriver"] as! Int, highest_programming: (team["scores"] as! [String: Any])["maxProgramming"] as! Int, combined: (team["scores"] as! [String: Any])["score"] as! Int))
+            for i in 0..<API.world_skills_cache.teams.count {
+                let team = API.world_skills_cache.teams[i]
+                self.world_skills_teams.append(WorldSkillsTeam(world_skills: team, ranking: team.ranking))
             }
         }
     }
 }
-
-var region_id_map: [String: Int] = [
-    "South Dakota": 2491,
-    "Pennsylvania - East": 2488,
-    "Virginia": 2495,
-    "Kansas": 2466,
-    "New York - South": 3579,
-    "Hawaii": 2462,
-    "District of Columbia": 2459,
-    "China": 2500,
-    "Michigan": 2472,
-    "Taiwan": 2528,
-    "Alabama": 2452,
-    "California - Region 4": 2910,
-    "Tennessee": 2492,
-    "Texas - Region 3": 2680,
-    "Washington": 2496,
-    "Kentucky": 2467,
-    "Georgia": 2461,
-    "Arizona": 2454,
-    "Texas - Region 2": 2679,
-    "Louisiana": 2468,
-    "Colorado": 2457,
-    "California - Region 2": 3660,
-    "Minnesota": 2473,
-    "Southern New England": 2471,
-    "Maryland": 2470,
-    "Australia": 2507,
-    "South Carolina": 2490,
-    "Ontario": 2504,
-    "Wisconsin": 2498,
-    "Mississippi": 2474,
-    "Japan": 2519,
-    "Ohio": 2485,
-    "Florida - North/Central": 2460,
-    "Oregon": 2487,
-    "Quebec": 3014,
-    "Texas - Region 4": 2681,
-    "North Carolina": 2483,
-    "New Jersey": 2480,
-    "Montana": 2476,
-    "Nebraska": 2477,
-    "Utah": 2494,
-    "Alberta/Saskatchewan": 2506,
-    "British Columbia (BC)": 2505,
-    "Indiana": 2465,
-    "Florida - South": 2677,
-    "Singapore": 2525
-]
 
 struct WorldSkillsRankings: View {
     
@@ -166,17 +124,28 @@ struct WorldSkillsRankings: View {
     @EnvironmentObject var navigation_bar_manager: NavigationBarManager
     
     @State private var display_skills = "World Skills"
-    @State private var start = 1
-    @State private var end = 200
     @State private var region_id = 0
     @State private var letter: Character = "0"
-    @State private var current_index = 100
-    @State private var world_skills_rankings = WorldSkillsTeams(begin: 1, end: 200, fetch: false)
-    @State private var season_id = RoboScoutAPI.selected_season_id()
+    @State private var world_skills_rankings = WorldSkillsTeams(fetch: false)
+    @State private var season_id = API.selected_season_id()
+    @State private var grade_level = UserSettings.getGradeLevel()
+    @State private var show_leaderboard = false
+    @State private var importing = true
+    
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     var body: some View {
         VStack {
-            if API.world_skills_cache.isEmpty {
+            if importing && API.world_skills_cache.teams.isEmpty {
+                ImportingData()
+                    .onReceive(timer) { _ in
+                        if API.imported_skills {
+                            world_skills_rankings = WorldSkillsTeams(fetch: false)
+                            importing = false
+                        }
+                    }
+            }
+            else if !importing && API.world_skills_cache.teams.isEmpty {
                 NoData()
             }
             else {
@@ -185,35 +154,26 @@ struct WorldSkillsRankings: View {
                         Button("Favorites") {
                             display_skills = "Favorites Skills"
                             navigation_bar_manager.title = display_skills
-                            start = 1
-                            end = 200
                             region_id = 0
                             letter = "0"
-                            current_index = 100
-                            world_skills_rankings = WorldSkillsTeams(begin: 1, end: API.world_skills_cache.count, filter_array: favorites.teams_as_array(), fetch: false)
+                            world_skills_rankings = WorldSkillsTeams(filter_array: favorites.teams_as_array(), fetch: false)
                         }
                     }
                     Menu("Region") {
                         Button("World") {
                             display_skills = "World Skills"
                             navigation_bar_manager.title = display_skills
-                            start = 1
-                            end = 200
                             region_id = 0
                             letter = "0"
-                            current_index = 100
-                            world_skills_rankings = WorldSkillsTeams(begin: 1, end: 200, fetch: false)
+                            world_skills_rankings = WorldSkillsTeams(fetch: false)
                         }
-                        ForEach(region_id_map.sorted(by: <), id: \.key) { region, id in
+                        ForEach(API.regions_map.sorted(by: <), id: \.key) { region, id in
                             Button(region) {
                                 display_skills = "\(region) Skills"
                                 navigation_bar_manager.title = display_skills
-                                start = 1
-                                end = 200
                                 region_id = id
                                 letter = "0"
-                                current_index = 100
-                                world_skills_rankings = WorldSkillsTeams(begin: 1, end: API.world_skills_cache.count, region: id, fetch: false)
+                                world_skills_rankings = WorldSkillsTeams(region: id, fetch: false)
                             }
                         }
                     }
@@ -222,77 +182,44 @@ struct WorldSkillsRankings: View {
                             Button(char) {
                                 display_skills = "\(char) Skills"
                                 navigation_bar_manager.title = display_skills
-                                start = 1
-                                end = 200
                                 letter = char.first!
-                                current_index = 100
-                                world_skills_rankings = WorldSkillsTeams(begin: 1, end: API.world_skills_cache.count, letter: char.first!, fetch: false)
+                                world_skills_rankings = WorldSkillsTeams(letter: char.first!, fetch: false)
                             }
                         }
                     }
                     Button("Clear Filters") {
                         display_skills = "World Skills"
                         navigation_bar_manager.title = display_skills
-                        start = 1
-                        end = 200
+
                         region_id = 0
                         letter = "0"
-                        current_index = 100
-                        world_skills_rankings = WorldSkillsTeams(begin: 1, end: 200, fetch: false)
+                        world_skills_rankings = WorldSkillsTeams(fetch: false)
                     }
                 }.fontWeight(.medium)
                     .font(.system(size: 19))
                     .padding(20)
-                ScrollViewReader { proxy in
+                if (show_leaderboard) {
                     List($world_skills_rankings.world_skills_teams) { team in
-                        WorldSkillsRow(team_world_skills: team.wrappedValue).id(team.wrappedValue.ranking).onAppear{
-                            if region_id != 0 || letter != "0" {
-                                return
-                            }
-                            let cache_size = API.world_skills_cache.count
-                            if cache_size == 0 {
-                                return
-                            }
-                            if team.wrappedValue.ranking == current_index + 100 {
-                                current_index += 50
-                                start = start + 50 > cache_size ? cache_size - 50 : start + 50
-                                end = end + 50 > cache_size ? cache_size : end + 50
-                                Task {
-                                    world_skills_rankings = WorldSkillsTeams(begin: start, end: end)
-                                    proxy.scrollTo(current_index - 25)
-                                }
-                            }
-                            else if team.wrappedValue.ranking == current_index - 100 + 1 && team.wrappedValue.ranking != 1 {
-                                current_index -= 50
-                                start = start - 50 < 1 ? 1 : start - 50
-                                end = end - 50 < 1 ? 1 + 50 : end - 50
-                                Task {
-                                    world_skills_rankings = WorldSkillsTeams(begin: start, end: end)
-                                    proxy.scrollTo(current_index + 25)
-                                }
-                            }
-                        }
+                        WorldSkillsRow(team_world_skills: team.wrappedValue).id(team.wrappedValue.ranking)
                     }
                 }
             }
-        }.background(.clear)
-            .onAppear{
-                navigation_bar_manager.title = $display_skills.wrappedValue
-                if RoboScoutAPI.selected_season_id() != self.season_id {
-                    display_skills = "World Skills"
-                    navigation_bar_manager.title = display_skills
-                    start = 1
-                    end = 200
-                    region_id = 0
-                    letter = "0"
-                    current_index = 100
-                    world_skills_rankings = WorldSkillsTeams(begin: 1, end: 200, fetch: false)
-                    self.season_id = RoboScoutAPI.selected_season_id()
-                }
+        }.onAppear{
+            self.show_leaderboard = true
+            navigation_bar_manager.title = $display_skills.wrappedValue
+            if (API.selected_season_id() != self.season_id) || (UserSettings.getGradeLevel() != self.grade_level) || (self.world_skills_rankings.world_skills_teams.isEmpty) {
+                display_skills = "World Skills"
+                navigation_bar_manager.title = display_skills
+                region_id = 0
+                letter = "0"
+                world_skills_rankings = WorldSkillsTeams(fetch: false)
+                self.season_id = API.selected_season_id()
+                self.grade_level = UserSettings.getGradeLevel()
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(settings.tabColor(), for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+        }
+        .onDisappear{
+            self.show_leaderboard = false
+        }
     }
 }
 

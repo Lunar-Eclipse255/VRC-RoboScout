@@ -17,7 +17,7 @@ struct TeamInfo: Identifiable {
 
 struct TeamInfoRow: View {
     var team_info: TeamInfo
-
+    
     var body: some View {
         HStack{
             Text(team_info.property)
@@ -29,28 +29,31 @@ struct TeamInfoRow: View {
 
 struct Lookup: View {
     
+    @Binding var lookup_type: Int
+    
     @EnvironmentObject var settings: UserSettings
     @EnvironmentObject var favorites: FavoriteStorage
+    @EnvironmentObject var dataController: RoboScoutDataController
     @EnvironmentObject var navigation_bar_manager: NavigationBarManager
-    
-    @State var lookupState = 0
     
     var body: some View {
         VStack {
-            Picker("Lookup", selection: $lookupState) {
+            Picker("Lookup", selection: $lookup_type) {
                 Text("Teams").tag(0)
                 Text("Events").tag(1)
             }.pickerStyle(.segmented).padding()
             Spacer()
-            if lookupState  == 0 {
+            if lookup_type == 0 {
                 TeamLookup()
                     .environmentObject(favorites)
                     .environmentObject(settings)
+                    .environmentObject(dataController)
             }
-            else if lookupState == 1 {
+            else if lookup_type == 1 {
                 EventLookup()
                     .environmentObject(favorites)
                     .environmentObject(settings)
+                    .environmentObject(dataController)
             }
         }.onAppear{
             navigation_bar_manager.title = "Lookup"
@@ -62,7 +65,7 @@ class EventSearch: ObservableObject {
     @Published var event_indexes: [String]
     @Published var events: [Event]
     
-    init(name_query: String? = nil, season_query: Int? = nil, page: Int = 1) {
+    init(name_query: String? = nil, season_query: Int? = nil, level_query: Int?=nil, grade_query: Int?=nil, region_query: Int?=nil,no_leagues: Bool = false, page: Int = 1) {
         event_indexes = [String]()
         events = [Event]()
         if name_query == nil {
@@ -78,11 +81,28 @@ class EventSearch: ObservableObject {
         if season_query != nil {
             scraper_params["seasonId"] = season_query!
         }
+        if no_leagues || name_query == nil || name_query == "" {
+            scraper_params["eventType"] = 1
+        }
+        if level_query != 0 {
+            scraper_params["level_class_id"] = level_query
+        }
+        if grade_query != 0 {
+            scraper_params["grade_level_id"] = grade_query
+        }
+        if region_query != 0{
+            scraper_params["event_region"] = region_query
+        }
+        
         scraper_params["page"] = page
-        scraper_params["from_date"] = "01-Jan-1970"
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd-MMM-yyyy"
+        
+        scraper_params["from_date"] = API.active_season_id() == season_query && (name_query == nil || name_query!.isEmpty) ? formatter.string(from: Date()) : "01-Jan-1970"
         
         let sku_array = RoboScoutAPI.robotevents_competition_scraper(params: scraper_params)
-        let data = RoboScoutAPI.robotevents_request(request_url: "/seasons/\(season_query ?? RoboScoutAPI.selected_season_id())/events", params: ["sku": sku_array])
+        let data = RoboScoutAPI.robotevents_request(request_url: "/seasons/\(season_query ?? API.selected_season_id())/events", params: ["sku": sku_array])
         
         for event_data in data {
             events.append(Event(fetch: false, data: event_data))
@@ -100,17 +120,22 @@ struct EventLookup: View {
     
     @EnvironmentObject var settings: UserSettings
     @EnvironmentObject var favorites: FavoriteStorage
+    @EnvironmentObject var dataController: RoboScoutDataController
     
     @State private var events: EventSearch = EventSearch()
     @State private var name_query: String = ""
-    @State private var season_query: Int = RoboScoutAPI.selected_season_id()
+    @State private var season_query: Int = API.selected_season_id()
+    @State private var level_query: Int = 0
+    @State private var grade_query: Int = 0
+    @State private var region_query: Int = 0
     @State private var page: Int = 1
     @State private var showLoading = false
+    @State private var loaded = false
     
-    func event_query(name_query: String, season_query: Int, page: Int = 1) {
+    func event_query(name_query: String, season_query: Int, level_query: Int, grade_query: Int, region_query: Int, no_leagues: Bool = false, page: Int = 1) {
         showLoading = true
         DispatchQueue.global(qos: .userInteractive).async { [self] in
-            let fetched_events = EventSearch(name_query: name_query, season_query: season_query, page: page)
+            let fetched_events = EventSearch(name_query: name_query, season_query: season_query, level_query: level_query, grade_query: grade_query, region_query: region_query, no_leagues: no_leagues, page: page)
             
             DispatchQueue.main.async {
                 self.events = fetched_events
@@ -121,7 +146,7 @@ struct EventLookup: View {
     
     func format_season_option(raw: String) -> String {
         var season = raw
-        season = season.replacingOccurrences(of: "VRC ", with: "")
+        season = season.replacingOccurrences(of: "VRC ", with: "").replacingOccurrences(of: "VEXU ", with: "")
         
         let season_split = season.split(separator: "-")
         
@@ -139,24 +164,69 @@ struct EventLookup: View {
                 text: $name_query,
                 onCommit: {
                     showLoading = true
-                    event_query(name_query: name_query, season_query: season_query)
+                    event_query(name_query: name_query, season_query: season_query, level_query: level_query, grade_query: grade_query, region_query: region_query)
                 }
-            ).frame(alignment: .center).multilineTextAlignment(.center).font(.system(size: 36)).padding(11)
+            ).frame(alignment: .center).multilineTextAlignment(.center).font(.system(size: 36))
+            
+            Menu("Filter") {
+                Menu("Season") {
+                    ForEach(API.season_id_map[UserSettings.getGradeLevel() != "College" ? 0 : 1].keys.sorted().reversed(), id: \.self) { season_id in
+                        Button(format_season_option(raw: API.season_id_map[UserSettings.getGradeLevel() != "College" ? 0 : 1][season_id] ?? "Unknown")) {
+                            showLoading = true
+                            season_query = season_id
+                            event_query(name_query: name_query, season_query: season_query, level_query: level_query, grade_query: grade_query, region_query: region_query)
+                        }
+                    }
+                }
+                Menu("Level") {
+                    ForEach(0..<8) { lesson_id in
+                        Button(API.level_map[UserSettings.getGradeLevel() != "College" ? 0 : 1][lesson_id] ?? "Unknown") {
+                            showLoading = true
+                            level_query = lesson_id
+                            event_query(name_query: name_query, season_query: season_query, level_query: level_query, grade_query: grade_query, region_query: region_query)
+                        }
+                    }
+                }
+                Menu("Grade") {
+                    ForEach(0..<3) { grade_id in
+                        Button(API.grade_map[UserSettings.getGradeLevel() != "College" ? 0 : 1][grade_id] ?? "Unknown") {
+                            showLoading = true
+                            grade_query = grade_id
+                            event_query(name_query: name_query, season_query: season_query, level_query: level_query, grade_query: grade_query, region_query: region_query)
+                        }
+                    }
+                }
+                Menu("Region") {
+                    ForEach(API.regions_map.sorted(by: <), id: \.key) { region, id in
+                        Button(region) {
+                            showLoading = true
+                            region_query = id
+                            event_query(name_query: name_query, season_query: season_query, level_query: level_query, grade_query: grade_query, region_query: region_query)
+                            
+                        }
+                    }
+                }
+                
+                Button("Clear Filters") {
+                    showLoading = true
+                    season_query = API.selected_season_id()
+                    grade_query = 0
+                    level_query = 0
+                    region_query = 0
+                    event_query(name_query: name_query, season_query: season_query, level_query: level_query, grade_query: grade_query, region_query: region_query)
+                }
+            }.fontWeight(.medium)
+                .font(.system(size: 19))
+                .padding(20)
+            
             VStack {
                 if showLoading {
                     ProgressView()
                 }
-            }.frame(height: 10)
-            Picker("Season", selection: $season_query) {
-                ForEach(API.season_id_map.keys.sorted().reversed(), id: \.self) { season_id in
-                    Text(format_season_option(raw: API.season_id_map[season_id] ?? "Unknown")).tag(season_id)
-                }
-            }.onChange(of: season_query) { _ in
-                showLoading = true
-                event_query(name_query: name_query, season_query: season_query)
-            }
+            }.frame(height: 12)
+            
             List(events.event_indexes) { event_index in
-                EventRow(event: events.events[Int(event_index)!])
+                EventRow(event: events.events[Int(event_index)!]).environmentObject(dataController)
             }
             HStack {
                 Spacer()
@@ -164,20 +234,26 @@ struct EventLookup: View {
                     showLoading = true
                     events = EventSearch()
                     page -= 1
-                    event_query(name_query: name_query, season_query: season_query, page: page)
+                    event_query(name_query: name_query, season_query: season_query, level_query: level_query, grade_query: grade_query, region_query: region_query, page: page)
                 }, label: {
-                    Image(systemName: "arrow.left").font(.system(size: 25))
+                    Image(systemName: "chevron.left").font(.system(size: 25))
                 }).disabled(page <= 1 || showLoading).opacity((events.events.isEmpty && !showLoading) ? 0 : 1).padding(20)
                 Text(String(describing: page)).font(.system(size: 25)).opacity((events.events.isEmpty && !showLoading) ? 0 : 1).padding()
                 Button(action: {
                     showLoading = true
                     events = EventSearch()
                     page += 1
-                    event_query(name_query: name_query, season_query: season_query, page: page)
+                    event_query(name_query: name_query, season_query: season_query, level_query: level_query, grade_query: grade_query, region_query: region_query, page: page)
                 }, label: {
-                    Image(systemName: "arrow.right").font(.system(size: 25))
+                    Image(systemName: "chevron.right").font(.system(size: 25))
                 }).disabled(events.events.count < 20 || showLoading).opacity((events.events.isEmpty && !showLoading) ? 0 : 1).padding(20)
                 Spacer()
+            }
+        }.onAppear{
+            if !loaded {
+                season_query = UserSettings.getSelectedSeasonID()
+                event_query(name_query: name_query, season_query: season_query, level_query: level_query, grade_query: grade_query, region_query: region_query, no_leagues: true)
+                loaded = true
             }
         }
     }
@@ -187,18 +263,26 @@ struct TeamLookup: View {
     
     @EnvironmentObject var settings: UserSettings
     @EnvironmentObject var favorites: FavoriteStorage
+    @EnvironmentObject var dataController: RoboScoutDataController
     
-    @State var team_number: String = ""
+    @State var team_number: String
     @State var favorited: Bool = false
-    @State var fetch: Bool = false
+    @State var fetch: Bool
     @State var fetched: Bool = false
     @State private var team: Team = Team()
     @State private var vrc_data_analysis = VRCDataAnalysis()
-    @State private var world_skills = WorldSkills(team: Team())
+    @State private var world_skills = WorldSkills()
     @State private var avg_rank: Double = 0.0
     @State private var award_counts = OrderedDictionary<String, Int>()
     @State private var showLoading: Bool = false
-    @State private var showingPopover = false
+    @State private var showingSheet = false
+    @State private var editable: Bool
+    
+    init(team_number: String = "", editable: Bool = true, fetch: Bool = false) {
+        self._team_number = State(initialValue: team_number)
+        self._editable = State(initialValue: editable)
+        self._fetch = State(initialValue: fetch)
+    }
     
     let adam_score_map = [
         "Low",
@@ -214,7 +298,7 @@ struct TeamLookup: View {
             print("Error loading AdamScore model")
             return "Error"
         }
-        guard let score = try? model.prediction(world_skills_ranking: Double(world_skills.ranking), trueskill_ranking: Double(vrc_data_analysis.trueskill_ranking), average_qualification_ranking: avg_rank, winrate: Double(vrc_data_analysis.total_wins) / Double(vrc_data_analysis.total_wins + vrc_data_analysis.total_losses + vrc_data_analysis.total_ties)) else {
+        guard let score = try? model.prediction(world_skills_ranking: Double(world_skills.ranking), trueskill_ranking: Double(vrc_data_analysis.ts_ranking), average_qualification_ranking: avg_rank, winrate: Double(vrc_data_analysis.total_wins) / Double(vrc_data_analysis.total_wins + vrc_data_analysis.total_losses + vrc_data_analysis.total_ties)) else {
             print("Runtime error with AdamScore model")
             return "Error"
         }
@@ -230,7 +314,7 @@ struct TeamLookup: View {
         DispatchQueue.global(qos: .userInteractive).async { [self] in
             
             let fetched_team = Team(number: number)
-                        
+            
             if fetched_team.id == 0 {
                 DispatchQueue.main.async {
                     showLoading = false
@@ -238,8 +322,8 @@ struct TeamLookup: View {
                 return
             }
             
-            let fetced_vrc_data_analysis = API.vrc_data_analysis_for(team: fetched_team, fetch: false)
-            let fetched_world_skills = API.world_skills_for(team: fetched_team)
+            let fetced_vrc_data_analysis = API.vrc_data_analysis_for(team: fetched_team, fetch_re_match_statistics: true)
+            let fetched_world_skills = API.world_skills_for(team: fetched_team) ?? WorldSkills(team: team, data: [String: Any]())
             let fetched_avg_rank = fetched_team.average_ranking()
             fetched_team.fetch_awards()
             
@@ -258,7 +342,7 @@ struct TeamLookup: View {
                     is_favorited = true
                 }
             }
-                        
+            
             DispatchQueue.main.async {
                 team = fetched_team
                 vrc_data_analysis = fetced_vrc_data_analysis
@@ -276,7 +360,9 @@ struct TeamLookup: View {
     var body: some View {
         VStack {
             HStack {
-                Image(systemName: "star").font(.system(size: 25)).padding(20).hidden()
+                Link(destination: URL(string: "https://www.robotevents.com/teams/VRC/\(team.number)")!) {
+                    Image(systemName: "link").font(.system(size: 25)).padding(20).opacity(fetched ? 1 : 0)
+                }
                 TextField(
                     "229V",
                     text: $team_number,
@@ -293,7 +379,7 @@ struct TeamLookup: View {
                         showLoading = true
                         fetch_info(number: team_number)
                     }
-                ).frame(alignment: .center).multilineTextAlignment(.center).font(.system(size: 36))
+                ).disabled(!editable).frame(alignment: .center).multilineTextAlignment(.center).font(.system(size: 36))
                     .onAppear{
                         if fetch {
                             fetch_info(number: team_number)
@@ -377,16 +463,16 @@ struct TeamLookup: View {
                 }
                 HStack {
                     Menu("TrueSkill Ranking") {
-                        Text(fetched && $vrc_data_analysis.wrappedValue.trueskill_ranking != 0 ? "\(displayRoundedTenths(number: vrc_data_analysis.trueskill)) TrueSkill" : "No TrueSkill data")
-                        Text((vrc_data_analysis.trueskill_ranking_change >= 0 ? "Up " : "Down ") + "\(abs(vrc_data_analysis.trueskill_ranking_change))" + " places since last update")
+                        Text(fetched && $vrc_data_analysis.wrappedValue.ts_ranking != 0 ? "\(displayRoundedTenths(number: vrc_data_analysis.trueskill)) TrueSkill" : "No TrueSkill data")
+                        Text((vrc_data_analysis.ranking_change >= 0 ? "Up " : "Down ") + "\(abs(vrc_data_analysis.ranking_change))" + " places since last update")
                     }
                     Spacer()
-                    Text(fetched && $vrc_data_analysis.wrappedValue.trueskill_ranking != 0 ? "\(vrc_data_analysis.trueskill_ranking)" : "")
+                    Text(fetched && $vrc_data_analysis.wrappedValue.ts_ranking != 0 ? "# \(vrc_data_analysis.ts_ranking) of \(API.vrc_data_analysis_cache.teams.count)" : "")
                 }
                 HStack {
                     Text("World Skills Ranking")
                     Spacer()
-                    Text(fetched && world_skills.ranking != 0 ? "\(world_skills.ranking)" : "")
+                    Text(fetched && world_skills.ranking != 0 ? "# \(world_skills.ranking) of \(API.world_skills_cache.teams.count)" : "")
                 }
                 HStack {
                     Menu("World Skills Score") {
@@ -409,7 +495,7 @@ struct TeamLookup: View {
                         Text("Total Ties: \(vrc_data_analysis.total_ties)")
                     }
                     Spacer()
-                    Text(fetched && $vrc_data_analysis.wrappedValue.trueskill != 0.0 ? "\(vrc_data_analysis.total_wins)-\(vrc_data_analysis.total_losses)- \(vrc_data_analysis.total_ties)" : "")
+                    Text(fetched ? "\(vrc_data_analysis.total_wins)-\(vrc_data_analysis.total_losses)-\(vrc_data_analysis.total_ties)" : "")
                 }
                 HStack {
                     Menu("Awards") {
@@ -418,38 +504,56 @@ struct TeamLookup: View {
                         }
                     }
                     Spacer()
-                    Text(fetched ? "\(self.team.awards.count)" : "")
+                    Text(fetched && team.registered ? "\(self.team.awards.count)" : "")
                 }
-                if settings.getAdamScore() {
+                HStack {
+                    Text("Qualifications")
+                    Spacer()
+                    Text("\(vrc_data_analysis.qualified_for_worlds == 1 ? "Worlds" : "")\(vrc_data_analysis.qualified_for_worlds == 1 && vrc_data_analysis.qualified_for_regionals == 1 ? ", " : "")\(vrc_data_analysis.qualified_for_regionals == 1 ? "Regionals" : "")\(fetched && vrc_data_analysis.qualified_for_worlds == 0 && vrc_data_analysis.qualified_for_regionals == 0 ? "None" : "")")
+                }
+                if UserSettings.getAdamScore() {
                     HStack {
-                        Button("AdamScore™") {
-                            showingPopover = true
-                        }.popover(isPresented: $showingPopover) {
-                            Text("AdamScore™")
-                                .font(.headline)
-                                .padding()
-                            VStack(alignment: .leading) {
-                                Text("AdamScore™ is a machine learning model trained on data from Team Ace's scout, Adam. 500 teams were manually reviewed and rated and the AdamScore™ model aims to predict the overall performance of any team.").padding()
-                                Text("The following metrics are looked at:").padding()
+                        Button(action: {
+                            showingSheet = true
+                        }, label: {
+                            HStack {
+                                Text("AdamScore™")
+                                Image(systemName: "questionmark.circle")
                             }
-                            BulletList(listItems: ["TrueSkill Ranking", "World Skills Ranking", "Average Qualifiers Ranking", "Winrate", "CCWM"], listItemSpacing: 10).padding()
+                        }).sheet(isPresented: $showingSheet) {
+                            VStack {
+                                Spacer().frame(height: 20)
+                                Text("AdamScore™")
+                                    .font(.headline)
+                                    .padding()
+                                VStack(alignment: .leading) {
+                                    Text("AdamScore™ is a machine learning model trained on data from Team ACE's scout, Adam. 500 teams were manually reviewed and rated and the AdamScore™ model aims to predict the overall performance of any team.").padding()
+                                    Text("The possible ratings are low, low mid, mid, high mid, high, and very high.").padding()
+                                    Text("The following metrics are looked at:").padding()
+                                }
+                                BulletList(listItems: ["TrueSkill Ranking", "World Skills Ranking", "Average Qualifiers Ranking", "Winrate", "CCWM"], listItemSpacing: 10).padding()
+                                Spacer()
+                            }.presentationDetents([.height(600), .large])
+                                .presentationDragIndicator(.automatic)
                         }
                         Spacer()
                         Text(fetched && $vrc_data_analysis.wrappedValue.trueskill != 0.0 && world_skills.ranking != 0 ? adam_score() : "")
                     }
                 }
-                HStack {
-                    NavigationLink(destination: TeamEventsView(team_number: team.number).environmentObject(settings)) {
-                        Text("Events")
+                if editable {
+                    HStack {
+                        NavigationLink(destination: TeamEventsView(team_number: team.number).environmentObject(settings).environmentObject(dataController)) {
+                            Text("Events")
+                        }
                     }
                 }
             }
-        }
+        }.tint(settings.accentColor())
     }
 }
 
 struct Lookup_Previews: PreviewProvider {
     static var previews: some View {
-        Lookup()
+        Lookup(lookup_type: .constant(0))
     }
 }

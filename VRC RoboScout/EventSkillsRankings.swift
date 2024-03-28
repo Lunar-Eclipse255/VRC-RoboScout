@@ -23,6 +23,16 @@ struct EventSkillsRankings: View {
     @State var teams_map: [String: String]
     @State var event_skills_rankings_list: EventSkillsRankingsList
     @State var showLoading = true;
+    @State var teamNumberQuery = ""
+    
+    var searchResults: [Int] {
+        if teamNumberQuery.isEmpty {
+            return event_skills_rankings_list.rankings_indexes
+        }
+        else {
+            return event_skills_rankings_list.rankings_indexes.filter{ (event.get_team(id: team_ranking(rank: $0).team.id) ?? Team()).number.lowercased().contains(teamNumberQuery.lowercased()) }
+        }
+    }
     
     init(event: Event, teams_map: [String: String]) {
         self.event = event
@@ -54,43 +64,48 @@ struct EventSkillsRankings: View {
         VStack {
             if showLoading {
                 ProgressView().padding()
+                Spacer()
             }
             else if event.skills_rankings.isEmpty {
                 NoData()
             }
             else {
-                List {
-                    ForEach(event_skills_rankings_list.rankings_indexes, id: \.self) { rank in
-                        VStack {
-                            HStack {
+                NavigationView {
+                    List {
+                        ForEach(searchResults, id: \.self) { rank in
+                            VStack {
                                 HStack {
-                                    Text(teams_map[String(team_ranking(rank: rank).team.id)] ?? "").font(.system(size: 20)).minimumScaleFactor(0.01).frame(width: 60, alignment: .leading)
-                                    Text((event.get_team(id: team_ranking(rank: rank).team.id) ?? Team()).name).frame(alignment: .leading)
-                                }
-                                Spacer()
-                            }.frame(height: 20, alignment: .leading)
-                            HStack {
+                                    HStack {
+                                        Text(teams_map[String(team_ranking(rank: rank).team.id)] ?? "").font(.system(size: 20)).minimumScaleFactor(0.01).frame(width: 70, alignment: .leading).bold()
+                                        Text((event.get_team(id: team_ranking(rank: rank).team.id) ?? Team()).name).frame(alignment: .leading)
+                                    }
+                                    Spacer()
+                                }.frame(height: 20, alignment: .leading)
                                 HStack {
-                                    VStack(alignment: .leading) {
-                                        Text("#\(team_ranking(rank: rank).rank)").frame(alignment: .leading).font(.system(size: 16))
-                                        Text("\(team_ranking(rank: rank).combined_score)").frame(alignment: .leading).font(.system(size: 16))
-                                    }.frame(width: 60, alignment: .leading)
-                                    Spacer()
-                                    VStack(alignment: .leading) {
-                                        Text("Prog: \(team_ranking(rank: rank).programming_attempts)").frame(alignment: .leading).font(.system(size: 16)).foregroundColor(.secondary)
-                                        Text("\(team_ranking(rank: rank).programming_score)").frame(alignment: .leading).font(.system(size: 16)).foregroundColor(.secondary)
-                                    }.frame(width: 90, alignment: .leading)
-                                    Spacer()
-                                    VStack(alignment: .leading) {
-                                        Text("Driver: \(team_ranking(rank: rank).driver_attempts)").frame(alignment: .leading).font(.system(size: 16)).foregroundColor(.secondary)
-                                        Text("\(team_ranking(rank: rank).driver_score)").frame(alignment: .leading).font(.system(size: 16)).foregroundColor(.secondary)
-                                    }.frame(width: 90, alignment: .leading)
-                                    Spacer()
+                                    HStack {
+                                        VStack(alignment: .leading) {
+                                            Text("# \(team_ranking(rank: rank).rank)").frame(alignment: .leading).font(.system(size: 16))
+                                            Text("\(team_ranking(rank: rank).combined_score)").frame(alignment: .leading).font(.system(size: 16))
+                                        }.frame(width: 60, alignment: .leading)
+                                        Spacer()
+                                        VStack(alignment: .leading) {
+                                            Text("Prog: \(team_ranking(rank: rank).programming_attempts)").frame(alignment: .leading).font(.system(size: 16)).foregroundColor(.secondary)
+                                            Text("\(team_ranking(rank: rank).programming_score)").frame(alignment: .leading).font(.system(size: 16)).foregroundColor(.secondary)
+                                        }.frame(width: 90, alignment: .leading)
+                                        Spacer()
+                                        VStack(alignment: .leading) {
+                                            Text("Driver: \(team_ranking(rank: rank).driver_attempts)").frame(alignment: .leading).font(.system(size: 16)).foregroundColor(.secondary)
+                                            Text("\(team_ranking(rank: rank).driver_score)").frame(alignment: .leading).font(.system(size: 16)).foregroundColor(.secondary)
+                                        }.frame(width: 90, alignment: .leading)
+                                        Spacer()
+                                    }
                                 }
                             }
                         }
                     }
-                }
+                }.navigationViewStyle(StackNavigationViewStyle())
+                    .searchable(text: $teamNumberQuery, prompt: "Enter a team number...")
+                    .tint(settings.navTextColor())
             }
         }.task{
             fetch_rankings()
@@ -106,6 +121,7 @@ struct EventSkillsRankings: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(settings.tabColor(), for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .tint(settings.accentColor())
     }
 }
 

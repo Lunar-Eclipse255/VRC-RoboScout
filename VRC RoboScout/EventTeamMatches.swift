@@ -6,13 +6,21 @@
 //
 
 import SwiftUI
+import CoreData
+import ActivityKit
+
+enum AlertText: String {
+    case enabled = "Match updates enabled. Your upcoming and most recent matches will be shown on your lock screen."
+    case disabled = "Match updates disabled. You may reenable them at any time."
+    case missingMatches = "Could not start match updates. Please try again when the match list has been released."
+    case missingPermission = "You have disabled Live Activities for VRC RoboScout. Please reenable them in the settings app."
+}
 
 struct EventTeamMatches: View {
-    
     @EnvironmentObject var settings: UserSettings
+    @EnvironmentObject var dataController: RoboScoutDataController
     
     @Binding var teams_map: [String: String]
-    
     @State var event: Event
     @State var team: Team
     @State var division: Division?
@@ -21,6 +29,29 @@ struct EventTeamMatches: View {
     @State private var matches = [Match]()
     @State private var matches_list = [String]()
     @State private var showLoading = true
+    @State private var showingTeamNotes = false
+    @State private var alertText = AlertText.enabled
+    @State private var showAlert = false
+    
+    @State var teamMatchNotes: [TeamMatchNote]? = nil
+    
+    private func updateDataSource() {
+        self.dataController.fetchNotes(event: self.event, team: self.team) { (fetchNotesResult) in
+            switch fetchNotesResult {
+                case let .success(notes):
+                    self.teamMatchNotes = notes
+                case .failure(_):
+                    print("Error fetching Core Data")
+            }
+        }
+    }
+    
+    init(teams_map: Binding<[String: String]>, event: Event, team: Team, division: Division? = nil) {
+        self._teams_map = teams_map
+        self._event = State(initialValue: event)
+        self._team = State(initialValue: team)
+        self._division = State(initialValue: division)
+    }
     
     func conditionalUnderline(match: String, index: Int) -> Bool {
         let split = match.split(separator: "&&")
@@ -41,20 +72,23 @@ struct EventTeamMatches: View {
         
         return false
     }
-
-    func scoreToDisplay(match: String, index: Int) -> String {
-        let split = match.split(separator: "&&")
+    
+    @ViewBuilder
+    func centerDisplay(matchString: String) -> some View {
+        let split = matchString.split(separator: "&&")
         let match = matches[Int(split[0]) ?? 0]
         
-        guard match.completed() || (match.predicted && predictions) else {
-            return ""
-        }
-        
-        if index == 6 {
-            return String(describing: (match.predicted && predictions) ? match.predicted_red_score : match.red_score)
+        if match.completed() || (match.predicted && predictions) {
+            HStack {
+                Text(String(describing: (match.predicted && predictions) ? match.predicted_red_score : match.red_score)).foregroundColor(.red).font(.system(size: 18)).frame(alignment: .leading).underline(conditionalUnderline(match: matchString, index: 6)).opacity((match.predicted && predictions) ? 0.6 : 1).bold()
+                Spacer()
+                Text(String(describing: (match.predicted && predictions) ? match.predicted_blue_score : match.blue_score)).foregroundColor(.blue).font(.system(size: 18)).frame(alignment: .trailing).underline(conditionalUnderline(match: matchString, index: 7)).opacity((match.predicted && predictions) ? 0.6 : 1).bold()
+            }
         }
         else {
-            return String(describing: (match.predicted && predictions) ? match.predicted_blue_score : match.blue_score)
+            Spacer()
+            Text(match.field).font(.system(size: 15)).foregroundColor(.secondary)
+            Spacer()
         }
     }
     
@@ -97,15 +131,17 @@ struct EventTeamMatches: View {
             var matches = [Match]()
             
             if self.team.id == 0 || self.team.number == "" {
-                DispatchQueue.main.async {
-                    self.team = Team(id: self.team.id, number: self.team.number)
-                }
+                self.team = Team(id: self.team.id, number: self.team.number)
             }
             
             if division == nil {
-                matches = self.team.matches_at(event: event)
+                let matches = self.team.matches_at(event: event)
+                if !matches.isEmpty {
+                    self.division = (self.team.matches_at(event: event)[0]).division
+                }
             }
-            else {
+            
+            if division != nil {
                 do {
                     self.event.fetch_matches(division: division!)
                     try self.event.calculate_team_performance_ratings(division: division!)
@@ -168,39 +204,66 @@ struct EventTeamMatches: View {
             }
         }
     }
-        
+
     var body: some View {
         VStack {
             if showLoading {
                 ProgressView().padding()
+                Spacer()
             }
             else if matches.isEmpty {
                 NoData()
             }
             else {
                 List($matches_list) { name in
-                    HStack {
-                        VStack {
-                            Text(name.wrappedValue.split(separator: "&&")[1]).font(.system(size: 15)).frame(width: 60, alignment: .leading).foregroundColor(conditionalColor(match: name.wrappedValue)).opacity(isPredicted(match: name.wrappedValue) ? 0.6 : 1)
-                            Spacer().frame(maxHeight: 4)
-                            Text(name.wrappedValue.split(separator: "&&")[8]).font(.system(size: 12)).frame(width: 60, alignment: .leading)
-                        }
-                        VStack {
-                            Text(String(teams_map[String(name.wrappedValue.split(separator: "&&")[2])] ?? "")).foregroundColor(.red).font(.system(size: 15)).underline(conditionalUnderline(match: name.wrappedValue, index: 2))
-                            Text(String(teams_map[String(name.wrappedValue.split(separator: "&&")[3])] ?? "")).foregroundColor(.red).font(.system(size: 15)).underline(conditionalUnderline(match: name.wrappedValue, index: 3))
-                        }.frame(width: 80)
-                        Text(scoreToDisplay(match: name.wrappedValue, index: 6)).foregroundColor(.red).font(.system(size: 19)).frame(alignment: .leading).underline(conditionalUnderline(match: name.wrappedValue, index: 6)).opacity(isPredicted(match: name.wrappedValue) ? 0.6 : 1)
-                        Spacer()
-                        Text(scoreToDisplay(match: name.wrappedValue, index: 7)).foregroundColor(.blue).font(.system(size: 19)).frame(alignment: .trailing).underline(conditionalUnderline(match: name.wrappedValue, index: 7)).opacity(isPredicted(match: name.wrappedValue) ? 0.6 : 1)
-                        VStack {
-                            Text(String(teams_map[String(name.wrappedValue.split(separator: "&&")[4])] ?? "")).foregroundColor(.blue).font(.system(size: 15)).underline(conditionalUnderline(match: name.wrappedValue, index: 4))
-                            Text(String(teams_map[String(name.wrappedValue.split(separator: "&&")[5])] ?? "")).foregroundColor(.blue).font(.system(size: 15)).underline(conditionalUnderline(match: name.wrappedValue, index: 5))
-                        }.frame(width: 80)
-                    }.frame(maxHeight: 30)
+                    NavigationLink(destination: MatchNotes(event: event, match: matches[Int(name.wrappedValue.split(separator: "&&")[0])!]).environmentObject(settings).environmentObject(dataController)) {
+                        HStack {
+                            VStack {
+                                Text(name.wrappedValue.split(separator: "&&")[1]).font(.system(size: 15)).frame(width: 60, alignment: .leading).foregroundColor(conditionalColor(match: name.wrappedValue)).opacity(isPredicted(match: name.wrappedValue) ? 0.6 : 1).bold()
+                                Spacer().frame(maxHeight: 4)
+                                Text(name.wrappedValue.split(separator: "&&")[8]).font(.system(size: 12)).frame(width: 60, alignment: .leading)
+                            }.frame(width: 40)
+                            VStack {
+                                if String(teams_map[String(name.wrappedValue.split(separator: "&&")[3])] ?? "") != "" {
+                                    Text(String(teams_map[String(name.wrappedValue.split(separator: "&&")[2])] ?? "")).foregroundColor(.red).font(.system(size: 15)).underline(conditionalUnderline(match: name.wrappedValue, index: 2))
+                                    Text(String(teams_map[String(name.wrappedValue.split(separator: "&&")[3])] ?? "")).foregroundColor(.red).font(.system(size: 15)).underline(conditionalUnderline(match: name.wrappedValue, index: 3))
+                                }
+                                else {
+                                    Text(String(teams_map[String(name.wrappedValue.split(separator: "&&")[2])] ?? "")).foregroundColor(.red).font(.system(size: 15)).underline(conditionalUnderline(match: name.wrappedValue, index: 2))
+                                }
+                            }.frame(width: 70)
+                            centerDisplay(matchString: name.wrappedValue)
+                            VStack {
+                                if String(teams_map[String(name.wrappedValue.split(separator: "&&")[5])] ?? "") != "" {
+                                    Text(String(teams_map[String(name.wrappedValue.split(separator: "&&")[4])] ?? "")).foregroundColor(.blue).font(.system(size: 15)).underline(conditionalUnderline(match: name.wrappedValue, index: 4))
+                                    Text(String(teams_map[String(name.wrappedValue.split(separator: "&&")[5])] ?? "")).foregroundColor(.blue).font(.system(size: 15)).underline(conditionalUnderline(match: name.wrappedValue, index: 5))
+                                }
+                                else {
+                                    Text(String(teams_map[String(name.wrappedValue.split(separator: "&&")[4])] ?? "")).foregroundColor(.blue).font(.system(size: 15)).underline(conditionalUnderline(match: name.wrappedValue, index: 4))
+                                }
+                            }.frame(width: 70)
+                        }.frame(maxHeight: 30)
+                    }
                 }
             }
-        }.task{
+        }.sheet(isPresented: $showingTeamNotes) {
+            Text("\(team.number) Match Notes").font(.title).padding().foregroundStyle(Color.primary)
+            ScrollView {
+                ForEach((teamMatchNotes ?? [TeamMatchNote]()).filter{ ($0.note ?? "") != "" }, id: \.self) { teamNote in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(teamNote.match_name ?? "Unknown Match").font(.headline).foregroundStyle(teamNote.winning_alliance == 0 ? (teamNote.played ? Color.yellow : Color.primary) : (teamNote.winning_alliance == teamNote.team_alliance ? Color.green : Color.red))
+                            Text(teamNote.note ?? "No note.").foregroundStyle(Color.primary)
+                        }
+                        Spacer()
+                    }.padding()
+                }
+            }
+        }.onAppear{
+            updateDataSource()
             fetch_info()
+        }.alert(isPresented: $showAlert) {
+            Alert(title: Text(alertText.rawValue), dismissButton: .default(Text("OK")))
         }
             .background(.clear)
             .toolbar {
@@ -210,29 +273,89 @@ struct EventTeamMatches: View {
                         .font(.system(size: 19))
                         .foregroundColor(settings.navTextColor())
                 }
-                if division != nil {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    if #available(iOS 16.2, *) {
                         Button(action: {
-                            predictions = !predictions
-                            calculating = true
-                            fetch_info(predict: predictions)
-                        }, label: {
-                            if calculating && predictions {
-                                ProgressView()
-                            }
-                            else if predictions {
-                                Image(systemName: "bolt.fill")
+                            if ActivityAuthorizationInfo().areActivitiesEnabled {
+                                self.showAlert = false
+                                Task {
+                                    do {
+                                        if !activities.matchUpdatesActive(event: self.event, team: self.team) {
+                                            DispatchQueue.main.async {
+                                                self.alertText = AlertText.enabled
+                                                self.showAlert = true
+                                            }
+                                            await activities.notificationTest()
+                                            try await activities.startMatchUpdatesActivity(event: self.event, team: self.team, matches: self.matches)
+                                        }
+                                        else {
+                                            DispatchQueue.main.async {
+                                                self.alertText = AlertText.disabled
+                                                self.showAlert = false
+                                            }
+                                            await activities.endMatchUpdatesActivity(event: self.event, team: self.team)
+                                        }
+                                    } catch {
+                                        DispatchQueue.main.async {
+                                            self.alertText = AlertText.missingMatches
+                                            self.showAlert = true
+                                        }
+                                    }
+                                }
                             }
                             else {
-                                Image(systemName: "bolt")
+                                self.alertText = AlertText.missingPermission
+                                self.showAlert = true
+                            }
+                        }, label: {
+                            if ActivityAuthorizationInfo().areActivitiesEnabled {
+                                if !activities.matchUpdatesActive(event: self.event, team: self.team) && matches.count >= 2 {
+                                    Image(systemName: "bell").foregroundColor(settings.navTextColor())
+                                }
+                                else if matches.count >= 2 {
+                                    Image(systemName: "bell.fill").foregroundColor(settings.navTextColor())
+                                }
+                                else {
+                                    Image(systemName: "bell.slash").foregroundColor(settings.navTextColor())
+                                }
+                            }
+                            else {
+                                Image(systemName: "bell.slash").foregroundColor(settings.navTextColor())
                             }
                         })
                     }
+                    Button(action: {
+                        showingTeamNotes = true
+                    }, label: {
+                        Image(systemName: "note.text").foregroundColor(settings.navTextColor())
+                    })
+                    Button(action: {
+                        if matches.isEmpty {
+                            return
+                        }
+                        predictions = !predictions
+                        calculating = true
+                        fetch_info(predict: predictions)
+                    }, label: {
+                        if calculating && predictions {
+                            ProgressView().foregroundColor(settings.navTextColor())
+                        }
+                        else if predictions {
+                            Image(systemName: "bolt.fill").foregroundColor(settings.navTextColor())
+                        }
+                        else if !matches.isEmpty {
+                            Image(systemName: "bolt").foregroundColor(settings.navTextColor())
+                        }
+                        else {
+                            Image(systemName: "bolt.slash")
+                        }
+                    })
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(settings.tabColor(), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .tint(settings.accentColor())
     }
 }
 

@@ -8,15 +8,8 @@
 import SwiftUI
 import OrderedCollections
 import UniformTypeIdentifiers
+import CoreTransferable
 
-struct CSVData: Transferable {
-    var csv_string: String
-    static var transferRepresentation: some TransferRepresentation {
-        DataRepresentation(exportedContentType: UTType("sunkensplashstudios.VRCRoboScout.csv")!) { csv in
-            csv.csv_string.data(using: .utf8)!
-        }
-    }
-}
 
 struct DataExporter: View {
     
@@ -27,13 +20,14 @@ struct DataExporter: View {
     @State var progress: Double = 0
     @State var csv_string: String = ""
     @State var show_option = 0
+    @State var view_closed = false
     @State var selected: OrderedDictionary = [
         "Team Name": true,
         "Robot Name": true,
         "Team Location": true,
-        "Average Qualifiers Ranking (slow)": true,
-        "Total Events Attended (slow)": true,
-        "Total Awards (slow)": true,
+        "Average Qualifiers Ranking (slow)": false,
+        "Total Events Attended (slow)": false,
+        "Total Awards (slow)": false,
         "Total Matches": true,
         "Total Wins": true,
         "Total Losses": true,
@@ -63,153 +57,165 @@ struct DataExporter: View {
         VStack {
             Spacer()
             Text("\(event_teams_list.count) Teams")
-            List {
-                HStack {
-                    Text("Team Info")
-                    Spacer()
-                    if show_option == 0 {
-                        Image(systemName: "chevron.up.circle")
-                    }
-                    else {
-                        Image(systemName: "chevron.down.circle")
-                    }
-                }.contentShape(Rectangle()).onTapGesture{
-                    show_option = 0
-                }
-                if show_option == 0 {
-                    ForEach(Array(Array(selected.keys)[0...2]), id: \.self) { option in
+            Spacer()
+            ScrollView {
+                VStack(spacing: 40) {
+                    VStack(spacing: 10) {
                         HStack {
-                            if option.contains("(slow)") {
-                                HStack {
-                                    Text("    " + option.description.replacingOccurrences(of: " (slow)", with: ""))
-                                    Image(systemName: "timer")
-                                }
+                            Text("Team Info")
+                            Spacer()
+                            if show_option == 0 {
+                                Image(systemName: "chevron.up.circle")
                             }
                             else {
-                                Text("    " + option)
-                            }
-                            Spacer()
-                            if selected[option] ?? false {
-                                Image(systemName: "checkmark")
+                                Image(systemName: "chevron.down.circle")
                             }
                         }.contentShape(Rectangle()).onTapGesture{
-                            if progress == 0 || progress == 1 {
-                                selected[option] = !(selected[option] ?? false)
-                                progress = 0
+                            show_option = 0
+                        }
+                        if show_option == 0 {
+                            ForEach(Array(Array(selected.keys)[0...2]), id: \.self) { option in
+                                HStack {
+                                    if option.contains("(slow)") {
+                                        HStack {
+                                            Text(option.description.replacingOccurrences(of: " (slow)", with: "")).foregroundColor(.secondary)
+                                            Image(systemName: "timer").foregroundColor(.secondary)
+                                        }
+                                    }
+                                    else {
+                                        Text(option).foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if selected[option] ?? false {
+                                        Image(systemName: "checkmark").foregroundColor(.secondary)
+                                    }
+                                }.contentShape(Rectangle()).onTapGesture{
+                                    if progress == 0 || progress == 1 {
+                                        selected[option] = !(selected[option] ?? false)
+                                        progress = 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("Performance Statistics")
+                            Spacer()
+                            if show_option == 1 {
+                                Image(systemName: "chevron.up.circle")
+                            }
+                            else {
+                                Image(systemName: "chevron.down.circle")
+                            }
+                        }.contentShape(Rectangle()).onTapGesture{
+                            show_option = 1
+                        }
+                        if show_option == 1 {
+                            ForEach(Array(Array(selected.keys)[3...10]), id: \.self) { option in
+                                HStack {
+                                    if option.contains("(slow)") {
+                                        HStack {
+                                            Text(option.description.replacingOccurrences(of: " (slow)", with: "")).foregroundColor(.secondary)
+                                            Image(systemName: "timer").foregroundColor(.secondary)
+                                        }
+                                    }
+                                    else {
+                                        Text(option).foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if selected[option] ?? false {
+                                        Image(systemName: "checkmark").foregroundColor(.secondary)
+                                    }
+                                }.contentShape(Rectangle()).onTapGesture{
+                                    if progress == 0 || progress == 1 {
+                                        selected[option] = !(selected[option] ?? false)
+                                        progress = 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("Skills Data")
+                            Spacer()
+                            if show_option == 2 {
+                                Image(systemName: "chevron.up.circle")
+                            }
+                            else {
+                                Image(systemName: "chevron.down.circle")
+                            }
+                        }.contentShape(Rectangle()).onTapGesture{
+                            show_option = 2
+                        }
+                        if show_option == 2 {
+                            ForEach(Array(Array(selected.keys)[11...14]), id: \.self) { option in
+                                HStack {
+                                    if option.contains("(slow)") {
+                                        HStack {
+                                            Text(option.description.replacingOccurrences(of: " (slow)", with: "")).foregroundColor(.secondary)
+                                            Image(systemName: "timer").foregroundColor(.secondary)
+                                        }
+                                    }
+                                    else {
+                                        Text(option).foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if selected[option] ?? false {
+                                        Image(systemName: "checkmark").foregroundColor(.secondary)
+                                    }
+                                }.contentShape(Rectangle()).onTapGesture{
+                                    if progress == 0 || progress == 1 {
+                                        selected[option] = !(selected[option] ?? false)
+                                        progress = 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("TrueSkill")
+                            Spacer()
+                            if show_option == 3 {
+                                Image(systemName: "chevron.up.circle")
+                            }
+                            else {
+                                Image(systemName: "chevron.down.circle")
+                            }
+                        }.contentShape(Rectangle()).onTapGesture{
+                            show_option = 3
+                        }
+                        if show_option == 3 {
+                            ForEach(Array(Array(selected.keys)[15...16]), id: \.self) { option in
+                                HStack {
+                                    if option.contains("(slow)") {
+                                        HStack {
+                                            Text(option.description.replacingOccurrences(of: " (slow)", with: "")).foregroundColor(.secondary)
+                                            Image(systemName: "timer").foregroundColor(.secondary)
+                                        }
+                                    }
+                                    else {
+                                        Text(option).foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if selected[option] ?? false {
+                                        Image(systemName: "checkmark").foregroundColor(.secondary)
+                                    }
+                                }.contentShape(Rectangle()).onTapGesture{
+                                    if progress == 0 || progress == 1 {
+                                        selected[option] = !(selected[option] ?? false)
+                                        progress = 0
+                                    }
+                                }
                             }
                         }
                     }
                 }
-                HStack {
-                    Text("Performance Statistics")
-                    Spacer()
-                    if show_option == 1 {
-                        Image(systemName: "chevron.up.circle")
-                    }
-                    else {
-                        Image(systemName: "chevron.down.circle")
-                    }
-                }.contentShape(Rectangle()).onTapGesture{
-                    show_option = 1
-                }
-                if show_option == 1 {
-                    ForEach(Array(Array(selected.keys)[3...10]), id: \.self) { option in
-                        HStack {
-                            if option.contains("(slow)") {
-                                HStack {
-                                    Text("    " + option.description.replacingOccurrences(of: " (slow)", with: ""))
-                                    Image(systemName: "timer")
-                                }
-                            }
-                            else {
-                                Text("    " + option)
-                            }
-                            Spacer()
-                            if selected[option] ?? false {
-                                Image(systemName: "checkmark")
-                            }
-                        }.contentShape(Rectangle()).onTapGesture{
-                            if progress == 0 || progress == 1 {
-                                selected[option] = !(selected[option] ?? false)
-                                progress = 0
-                            }
-                        }
-                    }
-                }
-                HStack {
-                    Text("Skills Data")
-                    Spacer()
-                    if show_option == 2 {
-                        Image(systemName: "chevron.up.circle")
-                    }
-                    else {
-                        Image(systemName: "chevron.down.circle")
-                    }
-                }.contentShape(Rectangle()).onTapGesture{
-                    show_option = 2
-                }
-                if show_option == 2 {
-                    ForEach(Array(Array(selected.keys)[11...14]), id: \.self) { option in
-                        HStack {
-                            if option.contains("(slow)") {
-                                HStack {
-                                    Text("    " + option.description.replacingOccurrences(of: " (slow)", with: ""))
-                                    Image(systemName: "timer")
-                                }
-                            }
-                            else {
-                                Text("    " + option)
-                            }
-                            Spacer()
-                            if selected[option] ?? false {
-                                Image(systemName: "checkmark")
-                            }
-                        }.contentShape(Rectangle()).onTapGesture{
-                            if progress == 0 || progress == 1 {
-                                selected[option] = !(selected[option] ?? false)
-                                progress = 0
-                            }
-                        }
-                    }
-                }
-                HStack {
-                    Text("TrueSkill")
-                    Spacer()
-                    if show_option == 3 {
-                        Image(systemName: "chevron.up.circle")
-                    }
-                    else {
-                        Image(systemName: "chevron.down.circle")
-                    }
-                }.contentShape(Rectangle()).onTapGesture{
-                    show_option = 3
-                }
-                if show_option == 3 {
-                    ForEach(Array(Array(selected.keys)[15...16]), id: \.self) { option in
-                        HStack {
-                            if option.contains("(slow)") {
-                                HStack {
-                                    Text("    " + option.description.replacingOccurrences(of: " (slow)", with: ""))
-                                    Image(systemName: "timer")
-                                }
-                            }
-                            else {
-                                Text("    " + option)
-                            }
-                            Spacer()
-                            if selected[option] ?? false {
-                                Image(systemName: "checkmark")
-                            }
-                        }.contentShape(Rectangle()).onTapGesture{
-                            if progress == 0 || progress == 1 {
-                                selected[option] = !(selected[option] ?? false)
-                                progress = 0
-                            }
-                        }
-                    }
-                }
-            }
-            ProgressView(value: progress)
+            }.padding()
+            Spacer()
+            ProgressView(value: progress).padding().tint(settings.accentColor())
             if progress != 1 {
                 Button("Generate") {
                     if progress != 0 {
@@ -225,24 +231,27 @@ struct DataExporter: View {
                         data += "\n"
                         var count = 0
                         for number in event_teams_list {
+                            if view_closed {
+                                return
+                            }
                             data += number
                             let team = event.teams.first(where: { $0.number == number })!
-                            let world_skills = API.world_skills_for(team: team)
-                            let vrc_data_analysis = API.vrc_data_analysis_for(team: team, fetch: false)
+                            let world_skills = API.world_skills_for(team: team) ?? WorldSkills(team: team, data: [String: Any]())
+                            let vrc_data_analysis = API.vrc_data_analysis_for(team: team, fetch_re_match_statistics: false)
                             for (option, state) in selected {
                                 guard state else { continue }
                                 if option == "Team Name" {
-                                    data += ",\(team.name)"
+                                    data += ",\(team.name.replacingOccurrences(of: ",", with: ""))"
                                 }
                                 else if option == "Robot Name" {
-                                    data += ",\(team.robot_name)"
+                                    data += ",\(team.robot_name.replacingOccurrences(of: ",", with: ""))"
                                 }
                                 else if option == "Team Location" {
-                                    data += ",\(generate_location(team: team))"
+                                    data += ",\(generate_location(team: team).replacingOccurrences(of: ",", with: ""))"
                                 }
                                 else if option == "Average Qualifiers Ranking (slow)" {
                                     data += ",\(team.average_ranking())"
-                                    sleep(1)
+                                    sleep(2)
                                 }
                                 else if option == "Total Events Attended (slow)" {
                                     if selected["Average Qualifiers Ranking (slow)"]! {
@@ -251,13 +260,13 @@ struct DataExporter: View {
                                     else {
                                         team.fetch_events()
                                         data += ",\(team.events.count)"
-                                        sleep(1)
+                                        sleep(2)
                                     }
                                 }
                                 else if option == "Total Awards (slow)" {
                                     team.fetch_awards()
                                     data += ",\(team.awards.count)"
-                                    sleep(1)
+                                    sleep(2)
                                 }
                                 else if option == "Total Matches" {
                                     data += ",\(vrc_data_analysis.total_wins + vrc_data_analysis.total_losses + vrc_data_analysis.total_ties)"
@@ -287,7 +296,7 @@ struct DataExporter: View {
                                     data += ",\(world_skills.driver)"
                                 }
                                 else if option == "TrueSkill Ranking" {
-                                    data += ",\(vrc_data_analysis.trueskill_ranking)"
+                                    data += ",\(vrc_data_analysis.ts_ranking)"
                                 }
                                 else if option == "TrueSkill Score" {
                                     data += ",\(vrc_data_analysis.trueskill)"
@@ -302,17 +311,38 @@ struct DataExporter: View {
                         csv_string = data
                         progress = 1
                     }
-                }
-                Spacer()
+                }.padding(10)
+                    .background(settings.accentColor())
+                    .foregroundColor(.white)
+                    .cornerRadius(20)
             }
             else {
-                ShareLink(item: CSVData(csv_string: csv_string), preview: SharePreview("VRC RoboScout CSV Data.csv", image: Image(systemName: "tablecells"))) {
-                    Text("Download")
-                }
-                Spacer()
+                Button("Save") {
+                    let dataPath = URL.documentsDirectory.appendingPathComponent("ScoutingData")
+                    if !FileManager.default.fileExists(atPath: dataPath.path) {
+                        do {
+                            try FileManager.default.createDirectory(atPath: dataPath.path, withIntermediateDirectories: true, attributes: nil)
+                        } catch {
+                            print("Error")
+                            print(error.localizedDescription)
+                        }
+                    }
+                    let url = dataPath.appending(path: "\(self.event.name.convertedToSlug() ?? self.event.sku).csv")
+                    let csvData = csv_string.data(using: .utf8)!
+                    try! csvData.write(to: url)
+                    if let sharedUrl = URL(string: "shareddocuments://\(url.path)") {
+                        if UIApplication.shared.canOpenURL(sharedUrl) {
+                            UIApplication.shared.open(sharedUrl, options: [:])
+                        }
+                    }
+                }.padding(10)
+                    .background(settings.accentColor())
+                    .foregroundColor(.white)
+                    .cornerRadius(20)
             }
-            
             Spacer()
+        }.onDisappear{
+            view_closed = true
         }.background(.clear)
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -325,6 +355,7 @@ struct DataExporter: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(settings.tabColor(), for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .tint(settings.accentColor())
     }
 }
 

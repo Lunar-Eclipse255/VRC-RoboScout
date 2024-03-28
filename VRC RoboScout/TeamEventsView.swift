@@ -11,6 +11,7 @@ struct EventRow: View {
     
     @EnvironmentObject var settings: UserSettings
     @EnvironmentObject var favorites: FavoriteStorage
+    @EnvironmentObject var dataController: RoboScoutDataController
     
     private var event: Event
     private var team: Team?
@@ -27,7 +28,7 @@ struct EventRow: View {
     }
 
     var body: some View {
-        NavigationLink(destination: EventView(event: self.event, team: self.team).environmentObject(favorites).environmentObject(settings)) {
+        NavigationLink(destination: EventView(event: self.event, team: self.team).environmentObject(favorites).environmentObject(settings).environmentObject(dataController)) {
             VStack {
                 Text(self.event.name).frame(maxWidth: .infinity, alignment: .leading).frame(height: 20)
                 Spacer().frame(height: 5)
@@ -101,7 +102,9 @@ struct TeamEventsView: View {
                 Spacer()
             }
             else if events.event_indexes.isEmpty {
+                Spacer()
                 NoData()
+                Spacer()
             }
             else {
                 List(events.event_indexes) { event_index in
@@ -122,13 +125,14 @@ struct TeamEventsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(settings.tabColor(), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .tint(settings.accentColor())
         
     }
 }
 
 struct TeamEventsView_Previews: PreviewProvider {
     static var previews: some View {
-        TeamEventsView(team_number: "2733J")
+        TeamEventsView(team_number: "229V")
     }
 }
 

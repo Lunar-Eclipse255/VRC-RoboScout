@@ -17,6 +17,8 @@ struct EventInformation: View {
     @State private var total_correct = 0
     @State private var total_matches = 0
     @State private var slider_value = 50.0
+    @State private var livestream_link = ""
+    @State private var calendarAlert = false
     
     let dateFormatter = DateFormatter()
     
@@ -29,12 +31,34 @@ struct EventInformation: View {
         VStack {
             Spacer()
             Text(event.name).font(.title2).multilineTextAlignment(.center).padding()
+            if !livestream_link.isEmpty {
+                HStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: "play.tv").foregroundColor(settings.accentColor())
+                        Link("Watch Livestream", destination: URL(string: self.livestream_link)!)
+                    }
+                    Spacer()
+                }
+            }
+            else {
+                Text("").frame(height: 20).onAppear{
+                    DispatchQueue.global(qos: .userInteractive).async { [self] in
+                        let link = self.event.fetch_livestream_link()
+                        DispatchQueue.main.async {
+                            self.livestream_link = link ?? ""
+                        }
+                    }
+                }
+            }
             VStack {
                 List {
                     HStack {
                         Text("Teams")
                         Spacer()
                         Text(String(event.teams.count))
+                    }.onAppear{
+                        print(self.livestream_link)
                     }
                     HStack {
                         Menu("Divisions") {
@@ -68,7 +92,7 @@ struct EventInformation: View {
                     HStack {
                         Text("Season")
                         Spacer()
-                        Text(API.season_id_map[event.season] ?? "")
+                        Text(API.season_id_map[UserSettings.getGradeLevel() != "College" ? 0 : 1][event.season] ?? "")
                     }
                     HStack {
                         Menu("Developer") {
@@ -166,10 +190,24 @@ struct EventInformation: View {
                         .font(.system(size: 19))
                         .foregroundColor(settings.navTextColor())
                 }
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Link(destination: URL(string: "https://www.robotevents.com/robot-competitions/vex-robotics-competition/\(self.event.sku).html")!) {
+                        Image(systemName: "link")
+                    }
+                    Button(action: {
+                        self.event.add_to_calendar()
+                        calendarAlert = true
+                    }, label: {
+                        Image(systemName: "calendar.badge.plus").foregroundColor(settings.navTextColor())
+                    }).alert(isPresented: $calendarAlert) {
+                       Alert(title: Text("Added to calendar"), dismissButton: .default(Text("OK")))
+                    }
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(settings.tabColor(), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .tint(settings.accentColor())
     }
 }
 
